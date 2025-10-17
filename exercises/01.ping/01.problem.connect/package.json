@@ -4,15 +4,16 @@
   "type": "module",
   "scripts": {
     "dev": "mcp-dev",
-    "dev:mcp": "tsx src/index.ts",
+    "dev:mcp": "tsx src/server.ts",
     "test": "vitest",
     "typecheck": "tsc",
     "inspect": "mcp-inspector"
   },
   "dependencies": {
     "@epic-web/invariant": "^1.0.0",
-    "@modelcontextprotocol/sdk": "^1.20.0",
-    "zod": "^3.25.67"
+    "@hono/node-server": "^1.14.5",
+    "hono": "^4.7.12",
+    "mcp-lite": "^0.8.2"
   },
   "devDependencies": {
     "@epic-web/config": "^1.21.3",

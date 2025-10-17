@@ -17,14 +17,16 @@ in this workshop. The client will be the MCP inspector which you can use within
 the workshop app. You can also configure an MCP client of your own if it
 supports the Model Context Protocol we're implementing.
 
-The transport mechanism we'll be using in this exercise is `stdio`, which is
-built-into the TypeScript SDK for MCP. This means the client will initiate the
-connection by spawning a new process and then use STDIO to communicate with it.
+The transport mechanism we'll be using in this exercise is HTTP with Server-Sent
+Events (SSE), which is built into the `mcp-lite` library. This means the client
+will connect to your server over HTTP and communicate using standard web
+protocols.
 
 <callout-info>
-	The most interesting servers you'll likely build will actually use an HTTP
-	transport so your users don't need to install anything to use it. But we'll
-	keep things simple and not much changes in this workshop by using `stdio`.
+	HTTP transport is production-ready and doesn't require users to install
+	anything locally. Clients can connect directly via HTTP, making it perfect for
+	web-based integrations and remote access. This is the recommended approach for
+	most MCP servers.
 </callout-info>
 
 ## MCP Initialization

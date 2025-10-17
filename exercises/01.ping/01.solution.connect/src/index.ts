@@ -1,24 +1,18 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { Hono } from 'hono'
+import { McpServer, StreamableHttpTransport } from 'mcp-lite'
 
-const server = new McpServer(
-	{
-		name: 'epicme',
-		title: 'EpicMe',
-		version: '1.0.0',
-	},
-	{
-		instructions: 'This lets you solve math problems.',
-	},
-)
-
-async function main() {
-	const transport = new StdioServerTransport()
-	await server.connect(transport)
-	console.error('EpicMe MCP Server running on stdio')
-}
-
-main().catch((error) => {
-	console.error('Fatal error in main():', error)
-	process.exit(1)
+// Create the MCP server using mcp-lite
+export const server = new McpServer({
+	name: 'epicme',
+	version: '1.0.0',
 })
+
+// Create the HTTP transport and bind it to the server
+const transport = new StreamableHttpTransport()
+export const handler = transport.bind(server)
+
+// Create Hono app
+const app = new Hono()
+app.all('/mcp', (c) => handler(c.req.raw))
+
+export { app }

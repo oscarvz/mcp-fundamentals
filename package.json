@@ -53,6 +53,7 @@
   "license": "GPL-3.0-only",
   "workspaces": [
     "exercises/*/*",
+    "exercises/shared",
     "examples/*",
     "epicshop/mcp-dev"
   ],

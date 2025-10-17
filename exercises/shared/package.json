@@ -1,0 +1,16 @@
+{
+  "name": "@exercises/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./test-utils": "./test-utils.ts"
+  },
+  "dependencies": {
+    "mcp-lite": "^0.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.2",
+    "typescript": "^5.9.3"
+  }
+}

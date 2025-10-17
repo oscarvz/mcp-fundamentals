@@ -16,3 +16,4 @@ data.db
 
 .wrangler/
 db.sqlite
+.claude/

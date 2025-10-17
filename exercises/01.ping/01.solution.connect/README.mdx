@@ -6,91 +6,140 @@
 can start adding a bunch of different tools, resources, and more to it.
 
 <details>
-<summary>🦉 What the StdioServerTransport does</summary>
+<summary>🦉 What the StreamableHttpTransport does</summary>
 
-The `StdioServerTransport` is a simple transport that allows you to connect to
-your MCP server using the command line. It's a good way to get started and
-understand how MCP servers work.
+The `StreamableHttpTransport` enables your MCP server to communicate over HTTP
+using standard web APIs. Unlike stdio-based transports that spawn processes,
+HTTP transport works like a regular web server.
 
-The MCP Client takes the `command` and `args` you configure and spawns a child
-process:
+The MCP Client connects to your server's HTTP endpoint (e.g., `http://localhost:3000`)
+and sends JSON-RPC requests as POST requests.
+
+### How HTTP Transport Works
+
+When you start your server, it listens on a port (default 3000):
 
 ```ts
-import { spawn } from 'child_process'
+import { createServer } from 'node:http'
 
-// these come from our config in the MCP Inspector:
-const command = 'npm'
-const args = [
-	'--silent',
-	'--prefix',
-	'/Users/kody/code/mcp-fundamentals',
-	'run',
-	'dev:mcp',
-]
+const httpServer = createServer(async (req, res) => {
+	// Read request body
+	const body = await getRequestBody(req)
+	const url = `http://localhost:${PORT}${req.url}`
 
-// Then the MCP client spawns a child process:
-const child = spawn(command, args)
+	// Convert Node.js request to Web API Request
+	const request = new Request(url, {
+		method: req.method,
+		headers: req.headers as HeadersInit,
+		body,
+	})
+
+	// Get response from MCP handler
+	const response = await handler(request)
+
+	// Send response back
+	res.statusCode = response.status
+	response.headers.forEach((value, key) => {
+		res.setHeader(key, value)
+	})
+	res.end(await response.text())
+})
+
+httpServer.listen(3000)
 ```
-
-Once started, the client and server communicate by sending and receiving messages through standard input and output (stdio). These messages follow the JSON-RPC format, which is a standard way to structure requests and responses.
 
 ### Example: Ping Request and Response
 
-Suppose the client wants to check if the server is running. It sends a `ping` request to the server by writing a line of JSON to the server's standard input:
+The client sends a `ping` request as an HTTP POST with a JSON-RPC body:
 
-```json
-{ "jsonrpc": "2.0", "id": "123", "method": "ping" }
+```bash
+curl -X POST http://localhost:3000 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":"123","method":"ping"}'
 ```
 
-The server reads this line from its standard input, processes the request, and writes a response to its standard output:
+The server processes this and responds:
 
 ```json
 { "jsonrpc": "2.0", "id": "123", "result": {} }
 ```
 
-This is a typical request-response cycle:
+### Key Differences from Stdio
 
-- The **client** writes a request (like `ping`) to the server's stdin.
-- The **server** reads the request, processes it, and writes a response to stdout.
-- The **client** reads the response from the server's stdout.
+**With Stdio (old approach):**
 
-Here's a simplified TypeScript example of how this might look in code:
+- Client spawns a child process
+- Communication via stdin/stdout streams
+- Process-specific, harder to test
+- Can't work across networks
+
+**With HTTP (current approach):**
+
+- Client makes HTTP requests to a URL
+- Standard Request/Response APIs
+- Easy to test without spawning processes
+- Works across networks
+- More familiar to web developers
+
+### Request/Response Cycle
+
+1. **Client** sends POST request with JSON-RPC payload
+2. **Node.js http server** receives the request
+3. **Server code** converts Node.js IncomingMessage to Web API Request
+4. **Handler** processes the request and returns a Response
+5. **Server code** sends the Response back to the client
+
+### StreamableHttpTransport Pattern
 
 ```ts
-// Client sends a ping request
-child.stdin.write(
-	JSON.stringify({ jsonrpc: '2.0', id: '123', method: 'ping' }) + '\n',
-)
+import { McpServer, StreamableHttpTransport } from 'mcp-lite'
+import { zodToJsonSchema } from 'zod-to-json-schema'
+import type { z } from 'zod'
 
-// Client listens for the response
-child.stdout.on('data', (data) => {
-	console.log('Received from server:', data.toString())
-	// Should log: {"jsonrpc": "2.0", "id": "123", "result": {}}
+const server = new McpServer({
+	name: 'epicme',
+	version: '1.0.0',
+	schemaAdapter: (schema) => zodToJsonSchema(schema as z.ZodType),
 })
+
+const transport = new StreamableHttpTransport()
+const handler = transport.bind(server)
+
+// handler is now a function: (request: Request) => Promise<Response>
 ```
 
-> **Note:** Each message is typically sent as a single line of JSON, so a newline character (`\n`) is used to separate messages.
+The `bind()` method connects the transport to your server and returns a
+handler function that accepts standard Web API Request objects and returns
+Response objects.
 
-#### ⚠️ What happens if you use `console.log` for logging?
+#### ⚠️ Note about logging
 
-If your server uses `console.log` for regular logging, those log messages will be sent to standard output (stdout) along with your protocol messages. This can confuse the client, which expects only valid JSON-RPC messages on stdout.
+Just like with stdio, you should use `console.error` for logging instead of
+`console.log`. While HTTP doesn't have the same stdout mixing issue as stdio,
+using `console.error` is a good practice for server logs to separate
+diagnostic output from response data.
 
-For example, if your server does this:
+#### Testing Benefits
+
+HTTP transport makes testing much easier. You can test your server in-memory
+without spawning processes:
 
 ```ts
-console.log('Server started!')
+// In your tests
+const request = new Request('http://localhost/mcp', {
+	method: 'POST',
+	headers: { 'Content-Type': 'application/json' },
+	body: JSON.stringify({
+		jsonrpc: '2.0',
+		id: '123',
+		method: 'ping',
+	}),
+})
+
+const response = await handler(request)
+const body = await response.json()
+// Assert on body
 ```
-
-Then the output on stdout might look like:
-
-```
-Server started!
-{"jsonrpc": "2.0", "id": "123", "result": {}}
-```
-
-When the client tries to read and parse the response, it will encounter the plain text `Server started!` and likely throw a parsing error, because it expects only JSON.
-
-That's why you should use `console.error` for logging and debugging output. Standard error (stderr) is separate from stdout, so log messages won't interfere with the protocol communication.
 
 Other transport mechanisms exist as well, and while the code for them is
 different the underlying concept is the same: a server and client

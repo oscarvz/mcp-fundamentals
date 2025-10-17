@@ -1,25 +1,22 @@
 // 💰 you're gonna want these imports
-// import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-// import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+// import { Hono } from 'hono'
+// import { McpServer, StreamableHttpTransport } from 'mcp-lite'
 
-// 🐨 create a new McpServer
-// - it should have a name of 'epicme', title of 'EpicMe', and a version of '1.0.0'
-// - it should have instructions for the LLM to know what this server can be used to do (we'll start out by saying it can solve math problems)
-// 💰 NOTE: the `instructions` should appear as a property of an object in the second argument of the McpServer constructor
-// 📜 If you're unsure how to do this, check out the MCP TypeScript SDK Docs:
-//   https://github.com/modelcontextprotocol/typescript-sdk
+// 🐨 create and export a new McpServer using mcp-lite
+// - it should have a name of 'epicme' and a version of '1.0.0'
+// 📜 If you're unsure how to do this, check out the mcp-lite docs:
+//   https://github.com/fiberplane/mcp-lite
+// 💰 export const server = new McpServer({ name: 'epicme', version: '1.0.0' })
 
-async function main() {
-	// 🐨 create a new StdioServerTransport
-	// 🐨 connect the server to the transport
+// 🐨 create a new StreamableHttpTransport
+// 🐨 bind the transport to the server to get a handler function
+// 🐨 export the handler
+// 💰 const transport = new StreamableHttpTransport()
+// 💰 export const handler = transport.bind(server)
 
-	// 🐨 add a log (using console.error) to the console to let the user know the server is running
+// 🐨 create and export a Hono app
+// 💰 export const app = new Hono()
 
-	// 💣 you can delete this once you're done
-	throw new Error('Not implemented')
-}
-
-main().catch((error) => {
-	console.error('Fatal error in main():', error)
-	process.exit(1)
-})
+// 🐨 add a route to handle all MCP requests on the '/mcp' path
+// 💰 app.all('/mcp', (c) => handler(c.req.raw))
+// 📝 Note: c.req.raw gives you the Web API Request object that the handler expects
