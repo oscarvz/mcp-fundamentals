@@ -1,25 +1,18 @@
 import { invariant } from '@epic-web/invariant'
-// 💰 you'll need this
-// import { completable } from '@modelcontextprotocol/sdk/server/completable.js'
 import { z } from 'zod'
 import { type EpicMeMCP } from './index.ts'
 
 export async function initializePrompts(agent: EpicMeMCP) {
-	agent.server.registerPrompt(
-		'suggest_tags',
-		{
-			title: 'Suggest Tags',
-			description: 'Suggest tags for a journal entry',
-			argsSchema: {
-				// 🐨 make this completable with the `completable` function
-				entryId: z
-					.string()
-					.describe('The ID of the journal entry to suggest tags for'),
-				// 🐨 the second argument to completable should be a function that returns an array of strings
-				// that match the value. Use await agent.db.getEntries() to get available entries and match on the id.
-			},
-		},
-		async ({ entryId }) => {
+	agent.server.prompt('suggest_tags', {
+		description: 'Suggest tags for a journal entry',
+		arguments: z.object({
+			entryId: z
+				.string()
+				.describe('The ID of the journal entry to suggest tags for'),
+		}),
+		// Note: mcp-lite uses a simpler API that doesn't include the completable() wrapper
+		// from the old SDK. Auto-completion is handled differently.
+		handler: async ({ entryId }) => {
 			invariant(entryId, 'entryId is required')
 			const entryIdNum = Number(entryId)
 			invariant(!Number.isNaN(entryIdNum), 'entryId must be a valid number')
@@ -40,7 +33,7 @@ Below is my EpicMe journal entry with ID "${entryId}" and the tags I have availa
 Please suggest some tags to add to it. Feel free to suggest new tags I don't have yet.
 
 For each tag I approve, if it does not yet exist, create it with the EpicMe "create_tag" tool. Then add approved tags to the entry with the EpicMe "add_tag_to_entry" tool.
-								`.trim(),
+							`.trim(),
 						},
 					},
 					{
@@ -68,5 +61,5 @@ For each tag I approve, if it does not yet exist, create it with the EpicMe "cre
 				],
 			}
 		},
-	)
+	})
 }

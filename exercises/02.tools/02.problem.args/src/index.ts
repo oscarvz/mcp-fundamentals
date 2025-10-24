@@ -1,32 +1,27 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { Hono } from 'hono'
+import { McpServer, StreamableHttpTransport } from 'mcp-lite'
+import { z } from 'zod'
+import { zodToJsonSchema } from 'zod-to-json-schema'
 
-const server = new McpServer(
-	{
-		name: 'epicme',
-		title: 'EpicMe',
-		version: '1.0.0',
-	},
-	{
-		capabilities: {
-			tools: {},
-		},
-		instructions: 'This lets you solve math problems.',
-	},
-)
+// Create the MCP server using mcp-lite
+export const server = new McpServer({
+	name: 'epicme',
+	version: '1.0.0',
+	schemaAdapter: (schema) => zodToJsonSchema(schema as z.ZodType),
+})
 
-server.registerTool(
-	'add',
-	{
-		title: 'Add',
-		// 🐨 update the description to indicate this adds any two numbers
-		description: 'Add one and two',
-		// 🐨 add an inputSchema object with a firstNumber and secondNumber property
-		// 📜 These should be zod schemas https://zod.dev/
-		// 💯 add descriptions for the llm to know what they're for
-	},
+server.tool('add', {
+	// 🐨 update the description to indicate this adds any two numbers
+	description: 'Add one and two',
+	// 🐨 add an inputSchema with a firstNumber and secondNumber property
+	// 📜 These should be zod schemas https://zod.dev/
+	// 💯 add descriptions for the llm to know what they're for
+	// 💰 inputSchema: z.object({
+	// 💰   firstNumber: z.number().describe('The first number to add'),
+	// 💰   secondNumber: z.number().describe('The second number to add'),
+	// 💰 }),
 	// 🐨 accept an object parameter with a firstNumber and secondNumber property
-	async () => {
+	handler: () => {
 		return {
 			content: [
 				{
@@ -37,15 +32,14 @@ server.registerTool(
 			],
 		}
 	},
-)
-
-async function main() {
-	const transport = new StdioServerTransport()
-	await server.connect(transport)
-	console.error('EpicMe MCP Server running on stdio')
-}
-
-main().catch((error) => {
-	console.error('Fatal error in main():', error)
-	process.exit(1)
 })
+
+// Create the HTTP transport and bind it to the server
+const transport = new StreamableHttpTransport()
+export const handler = transport.bind(server)
+
+// Create Hono app
+const app = new Hono()
+app.all('/mcp', (c) => handler(c.req.raw))
+
+export { app }

@@ -1,43 +1,30 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { invariant } from '@epic-web/invariant'
-import {
-	Client,
-	type ClientOptions,
-} from '@modelcontextprotocol/sdk/client/index.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { test, expect } from 'vitest'
+import { setupTestClient } from '@exercises/shared/test-utils'
+import { EpicMeMCP } from './index.js'
 
 function getTestDbPath() {
 	return `./test.ignored/db.${process.env.VITEST_WORKER_ID}.${Math.random().toString(36).slice(2)}.sqlite`
 }
 
-async function setupClient({ capabilities }: ClientOptions = {}) {
+async function setupClient() {
 	const EPIC_ME_DB_PATH = getTestDbPath()
 	const dir = path.dirname(EPIC_ME_DB_PATH)
 	await fs.mkdir(dir, { recursive: true })
-	const client = new Client(
-		{
-			name: 'EpicMeTester',
-			version: '1.0.0',
-		},
-		{ capabilities },
-	)
-	const transport = new StdioClientTransport({
-		command: 'tsx',
-		args: ['src/index.ts'],
-		env: {
-			...process.env,
-			EPIC_ME_DB_PATH,
-		},
-		stderr: 'ignore',
-	})
-	await client.connect(transport)
+
+	// Create a test-specific agent with its own database
+	const agent = new EpicMeMCP(EPIC_ME_DB_PATH)
+	await agent.init()
+
+	const testClient = await setupTestClient(agent.server, agent.getHandler())
+
 	return {
-		client,
+		...testClient,
 		EPIC_ME_DB_PATH,
 		async [Symbol.asyncDispose]() {
-			await client.transport?.close()
+			await testClient[Symbol.asyncDispose]()
 			// give things a moment to release locks and whatnot
 			await new Promise((r) => setTimeout(r, 100))
 			await fs.unlink(EPIC_ME_DB_PATH).catch(() => {}) // ignore missing file
@@ -98,66 +85,55 @@ test('Tool Call', async () => {
 	)
 })
 
-test('Resource Templates List', async () => {
+test('Resource List', async () => {
 	await using setup = await setupClient()
 	const { client } = setup
-	const list = await client.listResourceTemplates()
+	try {
+		const list = await client.listResources()
+		const tagsResource = list.resources.find((r) => r.name === 'tags')
 
-	// 🚨 Proactive check: Ensure resource templates are registered
-	invariant(
-		list.resourceTemplates.length > 0,
-		'🚨 No resource templates found - this exercise requires implementing parameterized resources like epicme://entries/{id}',
-	)
+		// 🚨 Proactive check: Ensure the tags resource is registered
+		invariant(
+			tagsResource,
+			'🚨 No "tags" resource found - make sure to register the tags resource',
+		)
 
-	const entriesTemplate = list.resourceTemplates.find(
-		(rt) => rt.uriTemplate.includes('entries') && rt.uriTemplate.includes('{'),
-	)
-	const tagsTemplate = list.resourceTemplates.find(
-		(rt) => rt.uriTemplate.includes('tags') && rt.uriTemplate.includes('{'),
-	)
-
-	// 🚨 Proactive checks for specific templates
-	invariant(
-		entriesTemplate,
-		'🚨 No entries resource template found - should implement epicme://entries/{id} template',
-	)
-	invariant(
-		tagsTemplate,
-		'🚨 No tags resource template found - should implement epicme://tags/{id} template',
-	)
-
-	expect(entriesTemplate).toEqual(
-		expect.objectContaining({
-			name: expect.any(String),
-			uriTemplate: expect.stringMatching(/entries.*\{.*\}/),
-			description: expect.stringMatching(/entry|entries/i),
-		}),
-	)
-
-	expect(tagsTemplate).toEqual(
-		expect.objectContaining({
-			name: expect.any(String),
-			uriTemplate: expect.stringMatching(/tags.*\{.*\}/),
-			description: expect.stringMatching(/tag|tags/i),
-		}),
-	)
+		expect(tagsResource).toEqual(
+			expect.objectContaining({
+				name: 'tags',
+				uri: expect.stringMatching(/^epicme:\/\/tags$/i),
+				description: expect.stringMatching(/tags/i),
+			}),
+		)
+	} catch (error: any) {
+		if (error.code === -32601) {
+			console.error('🚨 Resources capability not implemented!')
+			console.error(
+				'🚨 This exercise requires implementing resources with the MCP server',
+			)
+			console.error(
+				'🚨 You need to: 1) Add resources: {} to server capabilities, 2) Register a "tags" resource in initializeResources()',
+			)
+			console.error(
+				'🚨 Check src/resources.ts and implement a static resource for "epicme://tags"',
+			)
+			const enhancedError = new Error(
+				'🚨 Resources capability required. Register a "tags" resource that returns all tags from the database. ' +
+					(error.message || error),
+			)
+			enhancedError.stack = error.stack
+			throw enhancedError
+		}
+		throw error
+	}
 })
 
-test('Resource Template Read - Entry', async () => {
+test('Tags Resource Read', async () => {
 	await using setup = await setupClient()
 	const { client } = setup
-	// First create an entry to test against
-	await client.callTool({
-		name: 'create_entry',
-		arguments: {
-			title: 'Template Test Entry',
-			content: 'This entry is for testing templates',
-		},
-	})
-
 	try {
 		const result = await client.readResource({
-			uri: 'epicme://entries/1',
+			uri: 'epicme://tags',
 		})
 
 		expect(result).toEqual(
@@ -165,14 +141,14 @@ test('Resource Template Read - Entry', async () => {
 				contents: expect.arrayContaining([
 					expect.objectContaining({
 						mimeType: 'application/json',
-						uri: 'epicme://entries/1',
+						uri: 'epicme://tags',
 						text: expect.any(String),
 					}),
 				]),
 			}),
 		)
 
-		// 🚨 Proactive check: Ensure the resource content is valid JSON and contains entry data
+		// 🚨 Proactive check: Ensure the resource content is valid JSON
 		const content = result.contents[0]
 		invariant(
 			content && 'text' in content,
@@ -183,46 +159,37 @@ test('Resource Template Read - Entry', async () => {
 			'🚨 Resource content text must be a string',
 		)
 
-		let entryData: any
+		let tags: unknown
 		try {
-			entryData = JSON.parse(content.text)
+			tags = JSON.parse(content.text)
 		} catch (error) {
 			throw new Error('🚨 Resource content must be valid JSON')
 		}
 
-		// 🚨 Proactive check: Ensure entry data contains expected fields
-		invariant(entryData.id, '🚨 Entry resource should contain id field')
-		invariant(entryData.title, '🚨 Entry resource should contain title field')
+		// 🚨 Proactive check: Ensure tags is an array
 		invariant(
-			entryData.content,
-			'🚨 Entry resource should contain content field',
+			Array.isArray(tags),
+			'🚨 Tags resource should return an array of tags',
 		)
-	} catch (error) {
-		if (
-			error instanceof Error &&
-			error.message.includes('Resource epicme://entries/1 not found')
-		) {
-			console.error('🚨 Resource template reading not implemented!')
+	} catch (error: any) {
+		if (error.code === -32601) {
 			console.error(
-				'🚨 This exercise teaches parameterized resource URIs like epicme://entries/{id}',
-			)
-			console.error('🚨 You need to:')
-			console.error(
-				'🚨   1. Register resource templates with server.registerResource() using ResourceTemplate',
+				'🚨 Resource read failed - resources capability not implemented!',
 			)
 			console.error(
-				'🚨   2. Use ResourceTemplate to define parameterized URIs like epicme://entries/{id}',
+				'🚨 This means you haven\'t registered the "tags" resource properly',
 			)
 			console.error(
-				'🚨   3. The callback function will receive extracted parameters like { id }',
+				'🚨 In src/resources.ts, use agent.server.resource() to create a "tags" resource',
 			)
-			console.error('🚨   4. Return the resource content as JSON')
 			console.error(
-				'🚨 Check the solution to see how to extract parameters from template URIs',
+				'🚨 The resource should return JSON array of all tags from agent.db.getTags()',
 			)
-			throw new Error(
-				`🚨 Resource template reading not implemented - need to handle parameterized URIs like epicme://entries/1. ${error}`,
+			const enhancedError = new Error(
+				'🚨 "tags" resource registration required. ' + (error.message || error),
 			)
+			enhancedError.stack = error.stack
+			throw enhancedError
 		}
 		throw error
 	}

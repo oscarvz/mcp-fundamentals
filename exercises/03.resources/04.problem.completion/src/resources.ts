@@ -1,89 +1,54 @@
 import { invariant } from '@epic-web/invariant'
-import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { type EpicMeMCP } from './index.ts'
 
 export async function initializeResources(agent: EpicMeMCP) {
-	agent.server.registerResource(
-		'tags',
-		'epicme://tags',
-		{
-			title: 'Tags',
-			description: 'All tags currently in the database',
-		},
-		async (uri) => {
-			const tags = await agent.db.getTags()
-			return {
-				contents: [
-					{
-						mimeType: 'application/json',
-						text: JSON.stringify(tags),
-						uri: uri.toString(),
-					},
-				],
-			}
-		},
-	)
+	agent.server.resource('epicme://tags', {
+		description: 'All tags currently in the database',
+	}, async (uri) => {
+		const tags = await agent.db.getTags()
+		return {
+			contents: [
+				{
+					mimeType: 'application/json',
+					text: JSON.stringify(tags),
+					uri: uri.href,
+				},
+			],
+		}
+	})
 
-	agent.server.registerResource(
-		'tag',
-		new ResourceTemplate('epicme://tags/{id}', {
-			// 🐨 add a `complete` callback for the `id` parameter
-			// 🐨 accept a value and return an array of strings of ids that include the value
-			// 💰 const tags = await agent.db.getTags()
-			list: async () => {
-				const tags = await agent.db.getTags()
-				return {
-					resources: tags.map((tag) => ({
-						name: tag.name,
-						uri: `epicme://tags/${tag.id}`,
-						mimeType: 'application/json',
-					})),
-				}
-			},
-		}),
-		{
-			title: 'Tag',
-			description: 'A single tag with the given ID',
-		},
-		async (uri, { id }) => {
-			const tag = await agent.db.getTag(Number(id))
-			invariant(tag, `Tag with ID "${id}" not found`)
-			return {
-				contents: [
-					{
-						mimeType: 'application/json',
-						text: JSON.stringify(tag),
-						uri: uri.toString(),
-					},
-				],
-			}
-		},
-	)
+	// Note: mcp-lite currently uses a simpler resource API
+	// Auto-completion features from the old SDK are not directly available
+	// Resources work with URI templates for dynamic content
+	agent.server.resource('epicme://tags/{id}', {
+		description: 'A single tag with the given ID',
+	}, async (uri, { id }) => {
+		const tag = await agent.db.getTag(Number(id))
+		invariant(tag, `Tag with ID "${id}" not found`)
+		return {
+			contents: [
+				{
+					mimeType: 'application/json',
+					text: JSON.stringify(tag),
+					uri: uri.href,
+				},
+			],
+		}
+	})
 
-	agent.server.registerResource(
-		'entry',
-		new ResourceTemplate('epicme://entries/{id}', {
-			list: undefined,
-			// 🐨 add a `complete` callback for the `id` parameter
-			// 🐨 accept a value and return an array of strings of ids that include the value
-			// 💰 const entries = await agent.db.getEntries()
-		}),
-		{
-			title: 'Journal Entry',
-			description: 'A single journal entry with the given ID',
-		},
-		async (uri, { id }) => {
-			const entry = await agent.db.getEntry(Number(id))
-			invariant(entry, `Entry with ID "${id}" not found`)
-			return {
-				contents: [
-					{
-						mimeType: 'application/json',
-						text: JSON.stringify(entry),
-						uri: uri.toString(),
-					},
-				],
-			}
-		},
-	)
+	agent.server.resource('epicme://entries/{id}', {
+		description: 'A single journal entry with the given ID',
+	}, async (uri, { id }) => {
+		const entry = await agent.db.getEntry(Number(id))
+		invariant(entry, `Entry with ID "${id}" not found`)
+		return {
+			contents: [
+				{
+					mimeType: 'application/json',
+					text: JSON.stringify(entry),
+					uri: uri.href,
+				},
+			],
+		}
+	})
 }

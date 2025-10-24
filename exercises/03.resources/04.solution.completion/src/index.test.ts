@@ -1,43 +1,30 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { invariant } from '@epic-web/invariant'
-import {
-	Client,
-	type ClientOptions,
-} from '@modelcontextprotocol/sdk/client/index.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { test, expect } from 'vitest'
+import { setupTestClient } from '@exercises/shared/test-utils'
+import { EpicMeMCP } from './index.js'
 
 function getTestDbPath() {
 	return `./test.ignored/db.${process.env.VITEST_WORKER_ID}.${Math.random().toString(36).slice(2)}.sqlite`
 }
 
-async function setupClient({ capabilities }: ClientOptions = {}) {
+async function setupClient() {
 	const EPIC_ME_DB_PATH = getTestDbPath()
 	const dir = path.dirname(EPIC_ME_DB_PATH)
 	await fs.mkdir(dir, { recursive: true })
-	const client = new Client(
-		{
-			name: 'EpicMeTester',
-			version: '1.0.0',
-		},
-		{ capabilities },
-	)
-	const transport = new StdioClientTransport({
-		command: 'tsx',
-		args: ['src/index.ts'],
-		env: {
-			...process.env,
-			EPIC_ME_DB_PATH,
-		},
-		stderr: 'ignore',
-	})
-	await client.connect(transport)
+
+	// Create a test-specific agent with its own database
+	const agent = new EpicMeMCP(EPIC_ME_DB_PATH)
+	await agent.init()
+
+	const testClient = await setupTestClient(agent.server, agent.getHandler())
+
 	return {
-		client,
+		...testClient,
 		EPIC_ME_DB_PATH,
 		async [Symbol.asyncDispose]() {
-			await client.transport?.close()
+			await testClient[Symbol.asyncDispose]()
 			// give things a moment to release locks and whatnot
 			await new Promise((r) => setTimeout(r, 100))
 			await fs.unlink(EPIC_ME_DB_PATH).catch(() => {}) // ignore missing file
@@ -98,105 +85,112 @@ test('Tool Call', async () => {
 	)
 })
 
-test('Resource Template Completions', async () => {
+test('Resource List', async () => {
 	await using setup = await setupClient()
 	const { client } = setup
-	// First create some entries to have data for completion
-	await client.callTool({
-		name: 'create_entry',
-		arguments: {
-			title: 'Completion Test Entry 1',
-			content: 'This is for testing completions',
-		},
-	})
-
-	await client.callTool({
-		name: 'create_entry',
-		arguments: {
-			title: 'Completion Test Entry 2',
-			content: 'This is another completion test',
-		},
-	})
-
-	// Test that resource templates exist
-	const templates = await client.listResourceTemplates()
-
-	// 🚨 Proactive check: Ensure resource templates are registered
-	invariant(
-		templates.resourceTemplates.length > 0,
-		'🚨 No resource templates found - this exercise requires implementing resource templates',
-	)
-
-	const entriesTemplate = templates.resourceTemplates.find(
-		(rt) => rt.uriTemplate.includes('entries') && rt.uriTemplate.includes('{'),
-	)
-	invariant(
-		entriesTemplate,
-		'🚨 No entries resource template found - should implement epicme://entries/{id} template',
-	)
-
-	// 🚨 The key learning objective for this exercise is adding completion support
-	// This requires BOTH declaring completions capability AND implementing complete callbacks
-
 	try {
-		// Test completion functionality using the proper MCP SDK method
-		const completionResult = await client.complete({
-			ref: {
-				type: 'ref/resource',
-				uri: entriesTemplate.uriTemplate,
-			},
-			argument: {
-				name: 'id',
-				value: '1', // Should match at least one of our created entries
-			},
-		})
+		const list = await client.listResources()
+		const tagsResource = list.resources.find((r) => r.name === 'tags')
 
-		// 🚨 Proactive check: Completion should return results
+		// 🚨 Proactive check: Ensure the tags resource is registered
 		invariant(
-			Array.isArray(completionResult.completion?.values),
-			'🚨 Completion should return an array of values',
-		)
-		invariant(
-			completionResult.completion.values.length > 0,
-			'🚨 Completion should return at least one matching result for id="1"',
+			tagsResource,
+			'🚨 No "tags" resource found - make sure to register the tags resource',
 		)
 
-		// Check that completion values are strings
-		completionResult.completion.values.forEach((value: any) => {
-			invariant(
-				typeof value === 'string',
-				'🚨 Completion values should be strings',
-			)
-		})
+		expect(tagsResource).toEqual(
+			expect.objectContaining({
+				name: 'tags',
+				uri: expect.stringMatching(/^epicme:\/\/tags$/i),
+				description: expect.stringMatching(/tags/i),
+			}),
+		)
 	} catch (error: any) {
-		console.error('🚨 Resource template completion not fully implemented!')
-		console.error(
-			'🚨 This exercise teaches you how to add completion support to resource templates',
-		)
-		console.error('🚨 You need to:')
-		console.error('🚨   1. Add "completion" to your server capabilities')
-		console.error('🚨   2. Add complete callback to your ResourceTemplate:')
-		console.error(
-			'🚨      complete: { async id(value) { return ["1", "2", "3"] } }',
-		)
-		console.error(
-			'🚨   3. The complete callback should filter entries matching the partial value',
-		)
-		console.error('🚨   4. Return an array of valid completion strings')
-		console.error(`🚨 Error details: ${error?.message || error}`)
-
-		if (error?.code === -32601) {
-			throw new Error(
-				'🚨 Completion capability not declared - add "completion" to server capabilities and implement complete callbacks',
+		if (error.code === -32601) {
+			console.error('🚨 Resources capability not implemented!')
+			console.error(
+				'🚨 This exercise requires implementing resources with the MCP server',
 			)
-		} else if (error?.code === -32602) {
-			throw new Error(
-				'🚨 Complete callback not implemented - add complete: { async id(value) { ... } } to your ResourceTemplate',
+			console.error(
+				'🚨 You need to: 1) Add resources: {} to server capabilities, 2) Register a "tags" resource in initializeResources()',
 			)
-		} else {
-			throw new Error(
-				`🚨 Resource template completion not working - check capability declaration and complete callback implementation. ${error}`,
+			console.error(
+				'🚨 Check src/resources.ts and implement a static resource for "epicme://tags"',
 			)
+			const enhancedError = new Error(
+				'🚨 Resources capability required. Register a "tags" resource that returns all tags from the database. ' +
+					(error.message || error),
+			)
+			enhancedError.stack = error.stack
+			throw enhancedError
 		}
+		throw error
+	}
+})
+
+test('Tags Resource Read', async () => {
+	await using setup = await setupClient()
+	const { client } = setup
+	try {
+		const result = await client.readResource({
+			uri: 'epicme://tags',
+		})
+
+		expect(result).toEqual(
+			expect.objectContaining({
+				contents: expect.arrayContaining([
+					expect.objectContaining({
+						mimeType: 'application/json',
+						uri: 'epicme://tags',
+						text: expect.any(String),
+					}),
+				]),
+			}),
+		)
+
+		// 🚨 Proactive check: Ensure the resource content is valid JSON
+		const content = result.contents[0]
+		invariant(
+			content && 'text' in content,
+			'🚨 Resource content must have text field',
+		)
+		invariant(
+			typeof content.text === 'string',
+			'🚨 Resource content text must be a string',
+		)
+
+		let tags: unknown
+		try {
+			tags = JSON.parse(content.text)
+		} catch (error) {
+			throw new Error('🚨 Resource content must be valid JSON')
+		}
+
+		// 🚨 Proactive check: Ensure tags is an array
+		invariant(
+			Array.isArray(tags),
+			'🚨 Tags resource should return an array of tags',
+		)
+	} catch (error: any) {
+		if (error.code === -32601) {
+			console.error(
+				'🚨 Resource read failed - resources capability not implemented!',
+			)
+			console.error(
+				'🚨 This means you haven\'t registered the "tags" resource properly',
+			)
+			console.error(
+				'🚨 In src/resources.ts, use agent.server.resource() to create a "tags" resource',
+			)
+			console.error(
+				'🚨 The resource should return JSON array of all tags from agent.db.getTags()',
+			)
+			const enhancedError = new Error(
+				'🚨 "tags" resource registration required. ' + (error.message || error),
+			)
+			enhancedError.stack = error.stack
+			throw enhancedError
+		}
+		throw error
 	}
 })

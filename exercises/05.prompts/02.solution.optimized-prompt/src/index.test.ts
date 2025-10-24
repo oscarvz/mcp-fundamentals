@@ -1,46 +1,33 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { invariant } from '@epic-web/invariant'
-import {
-	Client,
-	type ClientOptions,
-} from '@modelcontextprotocol/sdk/client/index.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { test, expect } from 'vitest'
+import { setupTestClient } from '@exercises/shared/test-utils'
+import { EpicMeMCP } from './index.js'
 
 function getTestDbPath() {
 	return `./test.ignored/db.${process.env.VITEST_WORKER_ID}.${Math.random().toString(36).slice(2)}.sqlite`
 }
 
-async function setupClient({ capabilities }: ClientOptions = {}) {
+async function setupClient() {
 	const EPIC_ME_DB_PATH = getTestDbPath()
 	const dir = path.dirname(EPIC_ME_DB_PATH)
 	await fs.mkdir(dir, { recursive: true })
-	const client = new Client(
-		{
-			name: 'EpicMeTester',
-			version: '1.0.0',
-		},
-		{ capabilities },
-	)
-	const transport = new StdioClientTransport({
-		command: 'tsx',
-		args: ['src/index.ts'],
-		stderr: 'ignore',
-		env: {
-			...process.env,
-			EPIC_ME_DB_PATH,
-		},
-	})
-	await client.connect(transport)
+
+	// Create a test-specific agent with its own database
+	const agent = new EpicMeMCP(EPIC_ME_DB_PATH)
+	await agent.init()
+
+	const testClient = await setupTestClient(agent.server, agent.getHandler())
+
 	return {
-		client,
+		...testClient,
 		EPIC_ME_DB_PATH,
 		async [Symbol.asyncDispose]() {
-			await client.transport?.close()
+			await testClient[Symbol.asyncDispose]()
 			// give things a moment to release locks and whatnot
 			await new Promise((r) => setTimeout(r, 100))
-			await fs.unlink(EPIC_ME_DB_PATH).catch(() => {}) // ignore missing file.catch(() => {})
+			await fs.unlink(EPIC_ME_DB_PATH).catch(() => {}) // ignore missing file
 		},
 	}
 }
@@ -98,162 +85,112 @@ test('Tool Call', async () => {
 	)
 })
 
-test('Prompts List', async () => {
+test('Resource List', async () => {
 	await using setup = await setupClient()
 	const { client } = setup
-	const list = await client.listPrompts()
+	try {
+		const list = await client.listResources()
+		const tagsResource = list.resources.find((r) => r.name === 'tags')
 
-	// 🚨 Proactive check: Ensure prompts are registered
-	invariant(
-		list.prompts.length > 0,
-		'🚨 No prompts found - make sure to register prompts with the prompts capability',
-	)
+		// 🚨 Proactive check: Ensure the tags resource is registered
+		invariant(
+			tagsResource,
+			'🚨 No "tags" resource found - make sure to register the tags resource',
+		)
 
-	const tagSuggestionsPrompt = list.prompts.find(
-		(p) => p.name.includes('tag') || p.name.includes('suggest'),
-	)
-	invariant(
-		tagSuggestionsPrompt,
-		'🚨 No tag suggestions prompt found - should include a prompt for suggesting tags',
-	)
+		expect(tagsResource).toEqual(
+			expect.objectContaining({
+				name: 'tags',
+				uri: expect.stringMatching(/^epicme:\/\/tags$/i),
+				description: expect.stringMatching(/tags/i),
+			}),
+		)
+	} catch (error: any) {
+		if (error.code === -32601) {
+			console.error('🚨 Resources capability not implemented!')
+			console.error(
+				'🚨 This exercise requires implementing resources with the MCP server',
+			)
+			console.error(
+				'🚨 You need to: 1) Add resources: {} to server capabilities, 2) Register a "tags" resource in initializeResources()',
+			)
+			console.error(
+				'🚨 Check src/resources.ts and implement a static resource for "epicme://tags"',
+			)
+			const enhancedError = new Error(
+				'🚨 Resources capability required. Register a "tags" resource that returns all tags from the database. ' +
+					(error.message || error),
+			)
+			enhancedError.stack = error.stack
+			throw enhancedError
+		}
+		throw error
+	}
 })
 
-test('Optimized Prompt with Embedded Resources', async () => {
+test('Tags Resource Read', async () => {
 	await using setup = await setupClient()
 	const { client } = setup
-	// First create an entry and tag for testing
-	await client.callTool({
-		name: 'create_entry',
-		arguments: {
-			title: 'Optimized Test Entry',
-			content: 'This entry is for testing optimized prompts',
-		},
-	})
-
-	await client.callTool({
-		name: 'create_tag',
-		arguments: {
-			name: 'Optimization',
-			description: 'Tag for optimization testing',
-		},
-	})
-
-	const list = await client.listPrompts()
-	const firstPrompt = list.prompts[0]
-	invariant(firstPrompt, '🚨 No prompts available to test')
-
 	try {
-		const result = await client.getPrompt({
-			name: firstPrompt.name,
-			arguments: {
-				entryId: '1',
-			},
+		const result = await client.readResource({
+			uri: 'epicme://tags',
 		})
 
 		expect(result).toEqual(
 			expect.objectContaining({
-				messages: expect.arrayContaining([
+				contents: expect.arrayContaining([
 					expect.objectContaining({
-						role: expect.stringMatching(/user|system/),
-						content: expect.objectContaining({
-							type: expect.stringMatching(/text|resource/),
-						}),
+						mimeType: 'application/json',
+						uri: 'epicme://tags',
+						text: expect.any(String),
 					}),
 				]),
 			}),
 		)
 
-		// 🚨 Proactive check: Ensure prompt has multiple messages (optimization means embedding data)
+		// 🚨 Proactive check: Ensure the resource content is valid JSON
+		const content = result.contents[0]
 		invariant(
-			result.messages.length > 1,
-			'🚨 Optimized prompt should have multiple messages - instructions plus embedded data',
-		)
-
-		// 🚨 Proactive check: Ensure at least one message is a resource (embedded data)
-		const resourceMessages = result.messages.filter(
-			(m) => m.content.type === 'resource',
+			content && 'text' in content,
+			'🚨 Resource content must have text field',
 		)
 		invariant(
-			resourceMessages.length > 0,
-			'🚨 Optimized prompt should embed resource data directly instead of instructing LLM to run tools',
+			typeof content.text === 'string',
+			'🚨 Resource content text must be a string',
 		)
 
-		// 🚨 Proactive check: Ensure prompt doesn't tell LLM to run data retrieval tools (that's what we're optimizing away)
-		const textMessages = result.messages.filter(
-			(m) => m.content.type === 'text',
-		)
-		const hasDataRetrievalInstructions = textMessages.some(
-			(m) =>
-				typeof m.content.text === 'string' &&
-				(m.content.text.toLowerCase().includes('get_entry') ||
-					m.content.text.toLowerCase().includes('list_tags') ||
-					m.content.text.toLowerCase().includes('look up')),
-		)
+		let tags: unknown
+		try {
+			tags = JSON.parse(content.text)
+		} catch (error) {
+			throw new Error('🚨 Resource content must be valid JSON')
+		}
+
+		// 🚨 Proactive check: Ensure tags is an array
 		invariant(
-			!hasDataRetrievalInstructions,
-			'🚨 Optimized prompt should NOT instruct LLM to run data retrieval tools like get_entry or list_tags - data should be embedded directly',
+			Array.isArray(tags),
+			'🚨 Tags resource should return an array of tags',
 		)
-
-		// Note: The prompt can still instruct the LLM to use action tools like create_tag or add_tag_to_entry
-
-		// Validate structure of resource messages
-		resourceMessages.forEach((resMsg) => {
-			expect(resMsg.content).toEqual(
-				expect.objectContaining({
-					type: 'resource',
-					resource: expect.objectContaining({
-						uri: expect.any(String),
-						mimeType: 'application/json',
-						text: expect.any(String),
-					}),
-				}),
+	} catch (error: any) {
+		if (error.code === -32601) {
+			console.error(
+				'🚨 Resource read failed - resources capability not implemented!',
 			)
-
-			// 🚨 Proactive check: Ensure embedded resource contains valid JSON
-			invariant(
-				'resource' in resMsg.content,
-				'🚨 Resource message must have resource field',
+			console.error(
+				'🚨 This means you haven\'t registered the "tags" resource properly',
 			)
-			invariant(
-				typeof resMsg.content.resource === 'object' &&
-					resMsg.content.resource !== null,
-				'🚨 Resource must be an object',
+			console.error(
+				'🚨 In src/resources.ts, use agent.server.resource() to create a "tags" resource',
 			)
-			invariant(
-				'text' in resMsg.content.resource,
-				'🚨 Resource must have text field',
+			console.error(
+				'🚨 The resource should return JSON array of all tags from agent.db.getTags()',
 			)
-			invariant(
-				typeof resMsg.content.resource.text === 'string',
-				'🚨 Resource text must be a string',
+			const enhancedError = new Error(
+				'🚨 "tags" resource registration required. ' + (error.message || error),
 			)
-			try {
-				JSON.parse(resMsg.content.resource.text)
-			} catch (error) {
-				throw new Error('🚨 Embedded resource data must be valid JSON')
-			}
-		})
-	} catch (error) {
-		console.error('🚨 Prompt optimization not properly implemented!')
-		console.error(
-			'🚨 This exercise requires you to optimize prompts by embedding resource data directly in the prompt messages, instead of instructing the LLM to call get_entry or list_tags.',
-		)
-		console.error('🚨 You need to:')
-		console.error(
-			'🚨   1. Fetch the entry and tag data in your prompt handler.',
-		)
-		console.error(
-			'🚨   2. Create multiple messages: one with instructions, others with embedded resource content (type: "resource", mimeType: "application/json").',
-		)
-		console.error(
-			'🚨   3. DO NOT tell the LLM to call get_entry or list_tags - provide the data directly.',
-		)
-		console.error(
-			'🚨   4. Ensure at least one message is a resource, and that the resource contains valid JSON.',
-		)
-		console.error('🚨 This reduces LLM tool calls and improves performance!')
-		throw new Error(
-			`🚨 Optimized prompt should embed resource data directly, not instruct LLM to fetch it. ${error}`,
-		)
+			enhancedError.stack = error.stack
+			throw enhancedError
+		}
+		throw error
 	}
 })

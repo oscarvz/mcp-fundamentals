@@ -1,35 +1,10 @@
 import { invariant } from '@epic-web/invariant'
-import {
-	Client,
-	type ClientOptions,
-} from '@modelcontextprotocol/sdk/client/index.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { test, expect } from 'vitest'
-
-async function setupClient({ capabilities }: ClientOptions = {}) {
-	const client = new Client(
-		{
-			name: 'EpicMeTester',
-			version: '1.0.0',
-		},
-		{ capabilities },
-	)
-	const transport = new StdioClientTransport({
-		command: 'tsx',
-		args: ['src/index.ts'],
-		stderr: 'ignore',
-	})
-	await client.connect(transport)
-	return {
-		client,
-		async [Symbol.asyncDispose]() {
-			await client.transport?.close()
-		},
-	}
-}
+import { setupTestClient } from '@exercises/shared/test-utils'
+import { server, handler } from './index.js'
 
 test('Tool Definition', async () => {
-	await using setup = await setupClient()
+	await using setup = await setupTestClient(server, handler)
 	const { client } = setup
 	const list = await client.listTools()
 	const [firstTool] = list.tools
@@ -89,7 +64,7 @@ test('Tool Definition', async () => {
 })
 
 test('Tool Call', async () => {
-	await using setup = await setupClient()
+	await using setup = await setupTestClient(server, handler)
 	const { client } = setup
 	const result = await client.callTool({
 		name: 'add',
@@ -112,7 +87,7 @@ test('Tool Call', async () => {
 })
 
 test('Tool Call with Different Numbers', async () => {
-	await using setup = await setupClient()
+	await using setup = await setupTestClient(server, handler)
 	const { client } = setup
 	try {
 		const result = await client.callTool({

@@ -1,43 +1,30 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { invariant } from '@epic-web/invariant'
-import {
-	Client,
-	type ClientOptions,
-} from '@modelcontextprotocol/sdk/client/index.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { test, expect } from 'vitest'
+import { setupTestClient } from '@exercises/shared/test-utils'
+import { EpicMeMCP } from './index.js'
 
 function getTestDbPath() {
 	return `./test.ignored/db.${process.env.VITEST_WORKER_ID}.${Math.random().toString(36).slice(2)}.sqlite`
 }
 
-async function setupClient({ capabilities }: ClientOptions = {}) {
+async function setupClient() {
 	const EPIC_ME_DB_PATH = getTestDbPath()
 	const dir = path.dirname(EPIC_ME_DB_PATH)
 	await fs.mkdir(dir, { recursive: true })
-	const client = new Client(
-		{
-			name: 'EpicMeTester',
-			version: '1.0.0',
-		},
-		{ capabilities },
-	)
-	const transport = new StdioClientTransport({
-		command: 'tsx',
-		args: ['src/index.ts'],
-		env: {
-			...process.env,
-			EPIC_ME_DB_PATH,
-		},
-		stderr: 'ignore',
-	})
-	await client.connect(transport)
+
+	// Create a test-specific agent with its own database
+	const agent = new EpicMeMCP(EPIC_ME_DB_PATH)
+	await agent.init()
+
+	const testClient = await setupTestClient(agent.server, agent.getHandler())
+
 	return {
-		client,
+		...testClient,
 		EPIC_ME_DB_PATH,
 		async [Symbol.asyncDispose]() {
-			await client.transport?.close()
+			await testClient[Symbol.asyncDispose]()
 			// give things a moment to release locks and whatnot
 			await new Promise((r) => setTimeout(r, 100))
 			await fs.unlink(EPIC_ME_DB_PATH).catch(() => {}) // ignore missing file
@@ -193,7 +180,7 @@ test('Tags Resource Read', async () => {
 				'🚨 This means you haven\'t registered the "tags" resource properly',
 			)
 			console.error(
-				'🚨 In src/resources.ts, use agent.server.registerResource() to create a "tags" resource',
+				'🚨 In src/resources.ts, use agent.server.resource() to create a "tags" resource',
 			)
 			console.error(
 				'🚨 The resource should return JSON array of all tags from agent.db.getTags()',

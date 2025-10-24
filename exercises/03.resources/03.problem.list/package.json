@@ -11,8 +11,11 @@
   },
   "dependencies": {
     "@epic-web/invariant": "^1.0.0",
-    "@modelcontextprotocol/sdk": "^1.20.0",
-    "zod": "^3.25.67"
+    "@hono/node-server": "^1.14.5",
+    "hono": "^4.7.12",
+    "mcp-lite": "^0.8.2",
+    "zod": "^3.25.67",
+    "zod-to-json-schema": "^3.24.1"
   },
   "devDependencies": {
     "@epic-web/config": "^1.21.3",
