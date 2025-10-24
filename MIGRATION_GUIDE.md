@@ -79,40 +79,49 @@ Test → Import handler → McpServer (no processes!)
 
 ### ✅ All Exercises Migrated
 
-**Total exercises migrated:** 25 (1 ping + 6 tools + 8 resources + 4 resource-tools + 6 prompts)
+**Total exercises migrated:** 25 (1 ping + 6 tools + 8 resources + 4
+resource-tools + 6 prompts)
 
 #### 01.ping (1 exercise)
+
 - ✅ 01.problem.connect - Updated test file to use shared utilities
 
-#### 02.tools (6 exercises)  
+#### 02.tools (6 exercises)
+
 - ✅ All problem and solution exercises migrated
 - ✅ Converted `registerTool` → `tool()`
 - ✅ Updated tests to use HTTP-based testing
 
 #### 03.resources (8 exercises)
-- ✅ All problem and solution exercises migrated  
+
+- ✅ All problem and solution exercises migrated
 - ✅ Converted `registerResource` → `resource()`
 - ✅ URI templates work directly without ResourceTemplate wrapper
-- ⚠️ Note: List and completion callbacks simplified (mcp-lite uses a streamlined API)
+- ⚠️ Note: List and completion callbacks simplified (mcp-lite uses a streamlined
+  API)
 
 #### 04.resource-tools (4 exercises)
+
 - ✅ All problem and solution exercises migrated
 - ✅ Resources and tools work together seamlessly
 
 #### 05.prompts (6 exercises)
+
 - ✅ All problem and solution exercises migrated
-- ✅ Converted `registerPrompt` → `prompt()`  
+- ✅ Converted `registerPrompt` → `prompt()`
 - ✅ Changed `argsSchema` → `arguments`
 - ⚠️ Note: `completable()` wrapper not available in mcp-lite's simpler API
 
 ### Next Steps
 
 1. **Install dependencies** for all exercises:
+
    ```bash
    npm install
    ```
 
 2. **Run tests** to verify migration:
+
    ```bash
    npm test
    ```

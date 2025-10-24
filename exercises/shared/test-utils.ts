@@ -1,5 +1,22 @@
 import type { McpServer } from 'mcp-lite'
 
+export type CompletionRef =
+	| { type: 'ref/prompt'; name: string }
+	| { type: 'ref/invocation'; id: string }
+	| { type: 'ref/message'; id: string }
+
+export type CompletionParams = {
+	ref: CompletionRef
+	argument: { name: string; value?: unknown }
+}
+
+export type ClientCapabilities = {
+	tools?: Record<string, unknown>
+	resources?: Record<string, unknown>
+	prompts?: Record<string, unknown>
+	completion?: Record<string, unknown>
+}
+
 /**
  * Create a test client for in-process MCP testing
  * This allows us to test MCP servers without spawning processes or starting HTTP servers
@@ -44,7 +61,7 @@ export function createTestClient(
 		async initialize(params: {
 			protocolVersion: string
 			clientInfo: { name: string; version: string }
-			capabilities: Record<string, unknown>
+			capabilities: ClientCapabilities
 		}) {
 			return await sendRequest('initialize', params)
 		},
@@ -77,7 +94,11 @@ export function createTestClient(
 			return await sendRequest('prompts/get', params)
 		},
 
-		async completePrompt(params: { ref: string; argument: { name: string } }) {
+		async complete(params: CompletionParams) {
+			return await sendRequest('completion/complete', params)
+		},
+
+		async completePrompt(params: CompletionParams) {
 			return await sendRequest('completion/complete', params)
 		},
 
@@ -93,6 +114,7 @@ export function createTestClient(
 export async function setupTestClient(
 	server: McpServer,
 	handler: (request: Request) => Promise<Response>,
+	capabilities: ClientCapabilities = {},
 ) {
 	const client = createTestClient(server, handler)
 
@@ -100,7 +122,7 @@ export async function setupTestClient(
 	await client.initialize({
 		protocolVersion: '2024-11-05',
 		clientInfo: { name: 'test-client', version: '1.0.0' },
-		capabilities: {},
+		capabilities,
 	})
 
 	return {

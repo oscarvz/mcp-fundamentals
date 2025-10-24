@@ -6,6 +6,8 @@ import { DB } from './db/index.ts'
 import { initializePrompts } from './prompts.ts'
 import { initializeResources } from './resources.ts'
 import { initializeTools } from './tools.ts'
+import { registerCompletionHandlers } from '@exercises/shared/completion'
+import { initializeCompletionHandlers } from './completion.ts'
 
 export class EpicMeMCP {
 	db: DB
@@ -19,9 +21,14 @@ export class EpicMeMCP {
 		this.db = DB.getInstance(path)
 	}
 	async init() {
+		registerCompletionHandlers(this.server, initializeCompletionHandlers(this))
 		await initializeTools(this)
 		await initializeResources(this)
 		await initializePrompts(this)
+	}
+
+	private getCompletionHandlers() {
+		return initializeCompletionHandlers(this)
 	}
 
 	getHandler() {
@@ -37,6 +44,12 @@ export const defaultAgent = new EpicMeMCP(
 await defaultAgent.init()
 
 export const server = defaultAgent.server
+server.capabilities = {
+	tools: { listChanged: true },
+	resources: { listChanged: true },
+	prompts: { listChanged: true },
+	completion: {},
+}
 export const handler = defaultAgent.getHandler()
 
 // Create Hono app

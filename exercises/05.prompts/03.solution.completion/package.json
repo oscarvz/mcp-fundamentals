@@ -1,31 +1,31 @@
 {
-  "name": "exercises_05.prompts_03.solution.completion"
-  "private": true
-  "type": "module"
+  "name": "exercises_05.prompts_03.solution.completion",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "mcp-dev"
-    "dev:mcp": "tsx src/index.ts"
-    "test": "vitest"
-    "typecheck": "tsc"
+    "dev": "mcp-dev",
+    "dev:mcp": "tsx src/index.ts",
+    "test": "vitest",
+    "typecheck": "tsc",
     "inspect": "mcp-inspector"
-  }
+  },
   "dependencies": {
-    "@epic-web/invariant": "^1.0.0"
+    "@epic-web/invariant": "^1.0.0",
     "@hono/node-server": "^1.14.5",
     "hono": "^4.7.12",
     "mcp-lite": "^0.8.2",
-    "zod": "^3.25.67"
+    "zod": "^3.25.67",
     "zod-to-json-schema": "^3.24.1"
-  }
+  },
   "devDependencies": {
-    "@epic-web/config": "^1.21.3"
-    "@epic-web/mcp-dev": "*"
-    "@faker-js/faker": "^10.1.0"
-    "@modelcontextprotocol/inspector": "^0.17.1"
-    "@types/node": "^24.7.2"
-    "tsx": "^4.20.6"
-    "typescript": "^5.9.3"
+    "@epic-web/config": "^1.21.3",
+    "@epic-web/mcp-dev": "*",
+    "@faker-js/faker": "^10.1.0",
+    "@modelcontextprotocol/inspector": "^0.17.1",
+    "@types/node": "^24.7.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
-  }
+  },
   "license": "GPL-3.0-only"
 }
